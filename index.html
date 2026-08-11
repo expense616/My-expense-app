@@ -1,0 +1,535 @@
+DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>記帳囉💸</title>
+    <!-- Tailwind CSS 讓介面擁有現代、簡潔的質感 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans select-none pb-20">
+
+    <!-- 主容器 -->
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative bg-gray-50 shadow-md">
+        
+        <!-- 頂部標題與預算控管 -->
+        <header class="p-4 bg-white border-b border-gray-200 sticky top-0 z-10">
+            <div class="flex justify-between items-center mb-2">
+                <h1 class="text-2xl font-bold">記帳囉💸</h1>
+                <button onclick="openBudgetModal()" class="text-gray-500 hover:text-gray-700">
+                    ⚙️
+                </button>
+            </div>
+            
+            <div class="bg-gray-100 p-3 rounded-xl">
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-500">本月預算控管</span>
+                    <span id="budget-text" class="font-bold">-$ / -$</span>
+                </div>
+                <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                    <div id="budget-progress" class="bg-blue-500 h-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 內容頁籤 (消費紀錄 vs 消費統計) -->
+        <main class="flex-1 pb-16">
+            
+            <!-- 頁籤一：消費紀錄 -->
+            <div id="tab-records" class="p-4 space-y-4">
+                <!-- 日期選擇器 -->
+                <div class="bg-white p-4 rounded-xl shadow-sm">
+                    <input type="date" id="selected-date" class="w-full text-center font-bold text-lg bg-gray-50 p-2 rounded-lg border border-gray-200" onchange="changeDate(this.value)">
+                </div>
+
+                <!-- 當日總支出與標籤過濾 -->
+                <div class="bg-white p-4 rounded-xl shadow-sm space-y-3">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div id="display-date" class="text-xs text-gray-400">---- / -- / --</div>
+                            <div class="text-sm font-semibold text-gray-600">當日總支出</div>
+                        </div>
+                        <div id="day-total" class="text-xl font-bold text-blue-600">$0 TWD</div>
+                    </div>
+                    <!-- 標籤過濾器 -->
+                    <div id="tag-filters" class="flex gap-2 overflow-x-auto pb-1 text-xs">
+                        <!-- 動態生成 -->
+                    </div>
+                </div>
+
+                <!-- 消費明細列表 -->
+                <div class="space-y-2">
+                    <div class="text-xs font-semibold text-gray-400 px-1">消費明細</div>
+                    <div id="expense-list" class="space-y-2">
+                        <!-- 動態生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 頁籤二：消費統計 -->
+            <div id="tab-stats" class="p-4 space-y-4 hidden">
+                <div class="flex gap-2">
+                    <button onclick="switchStatType(0)" id="stat-type-0" class="flex-1 py-1.5 text-sm font-bold bg-blue-500 text-white rounded-lg shadow-sm">按月統計</button>
+                    <button onclick="switchStatType(1)" id="stat-type-1" class="flex-1 py-1.5 text-sm font-bold bg-gray-200 text-gray-700 rounded-lg">按年統計</button>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="switchStatMode(0)" id="stat-mode-0" class="flex-1 py-1.5 text-xs font-bold bg-gray-800 text-white rounded-lg">依類別</button>
+                    <button onclick="switchStatMode(1)" id="stat-mode-1" class="flex-1 py-1.5 text-xs font-bold bg-gray-200 text-gray-700 rounded-lg">依標籤</button>
+                </div>
+
+                <!-- 日期切換導覽 -->
+                <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">
+                    <button onclick="changeStatDate(-1)" class="text-lg font-bold px-3">◀</button>
+                    <span id="stat-date-title" class="font-bold">---- 年 -- 月</span>
+                    <button onclick="changeStatDate(1)" class="text-lg font-bold px-3">▶</button>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm text-center">
+                    <div id="stat-total-label" class="text-xs text-gray-400">本月總支出</div>
+                    <div id="stat-total-amount" class="text-2xl font-bold text-blue-600 mt-1">$0</div>
+                </div>
+
+                <!-- 統計明細列表 -->
+                <div id="stat-list" class="space-y-2">
+                    <!-- 動態生成 -->
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部導覽列 -->
+        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex justify-around items-center h-14 z-20">
+            <button onclick="switchTab(0)" id="nav-btn-0" class="flex-1 flex flex-col items-center justify-center text-blue-600">
+                <span class="text-xs font-medium">📅 消費紀錄</span>
+            </button>
+            <button onclick="switchTab(1)" id="nav-btn-1" class="flex-1 flex flex-col items-center justify-center text-gray-400">
+                <span class="text-xs font-medium">📊 消費統計</span>
+            </button>
+        </nav>
+
+        <!-- 懸浮新增按鈕 -->
+        <button onclick="openAddModal()" class="fixed bottom-16 right-6 bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold z-30 active:scale-95 transition-transform">
+            +
+        </button>
+
+        <!-- 新增/修改彈窗 -->
+        <div id="expense-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col justify-end">
+            <div class="bg-white rounded-t-2xl p-4 max-h-[90vh] overflow-y-auto space-y-4">
+                <div class="flex justify-between items-center border-b pb-2">
+                    <h3 id="modal-title" class="font-bold text-lg">新增一筆消費</h3>
+                    <button onclick="closeModal()" class="text-gray-400 text-xl font-bold">&times;</button>
+                </div>
+
+                <div class="space-y-3 text-sm">
+                    <div>
+                        <label class="text-gray-500 text-xs">品項名稱</label>
+                        <input type="text" id="input-title" placeholder="例如：拉麵" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-gray-500 text-xs">幣別</label>
+                            <select id="input-currency" onchange="updateCurrency()" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                                <option value="TWD">TWD 新台幣</option>
+                                <option value="JPY">JPY 日圓</option>
+                                <option value="USD">USD 美元</option>
+                                <option value="EUR">EUR 歐元</option>
+                                <option value="KRW">KRW 韓元</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-gray-500 text-xs">類別</label>
+                            <select id="input-category" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                                <option value="餐飲">餐飲</option>
+                                <option value="交通">交通</option>
+                                <option value="購物">購物</option>
+                                <option value="娛樂">娛樂</option>
+                                <option value="保險">保險</option>
+                                <option value="居家">居家</option>
+                                <option value="醫藥">醫藥</option>
+                                <option value="訂閱">訂閱</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="exchange-rate-box" class="hidden">
+                        <label class="text-gray-500 text-xs">匯率 (1 外幣 = ? TWD)</label>
+                        <input type="number" id="input-rate" value="1.0" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                    </div>
+
+                    <div>
+                        <label class="text-gray-500 text-xs">金額</label>
+                        <div id="input-amount-display" class="text-xl font-bold text-blue-600 mt-1 p-2 bg-gray-50 border rounded-lg">0</div>
+                    </div>
+
+                    <div>
+                        <label class="text-gray-500 text-xs">標籤 (以空格分隔)</label>
+                        <input type="text" id="input-tags" placeholder="旅遊 聚餐" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                    </div>
+
+                    <div>
+                        <label class="text-gray-500 text-xs">日期</label>
+                        <input type="date" id="input-date" class="w-full mt-1 p-2 border rounded-lg bg-gray-50">
+                    </div>
+                </div>
+
+                <!-- 自定義數字鍵盤 -->
+                <div class="grid grid-cols-3 gap-1 bg-gray-200 p-2 rounded-xl">
+                    <button onclick="appendNum('1')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">1</button>
+                    <button onclick="appendNum('2')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">2</button>
+                    <button onclick="appendNum('3')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">3</button>
+                    <button onclick="appendNum('4')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">4</button>
+                    <button onclick="appendNum('5')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">5</button>
+                    <button onclick="appendNum('6')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">6</button>
+                    <button onclick="appendNum('7')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">7</button>
+                    <button onclick="appendNum('8')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">8</button>
+                    <button onclick="appendNum('9')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">9</button>
+                    <button onclick="clearNum()" class="bg-red-50 text-red-500 py-2.5 rounded-md font-bold text-sm active:bg-red-100">C</button>
+                    <button onclick="appendNum('0')" class="bg-white py-2.5 rounded-md font-bold text-lg active:bg-gray-100">0</button>
+                    <button onclick="backspaceNum()" class="bg-red-50 text-red-500 py-2.5 rounded-md font-bold text-sm active:bg-red-100">⌫</button>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button id="delete-btn" onclick="deleteCurrentItem()" class="hidden bg-red-100 text-red-600 font-bold py-2 px-4 rounded-xl">刪除</button>
+                    <button onclick="saveExpense()" class="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-md">儲存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 預算設定彈窗 -->
+        <div id="budget-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col justify-end">
+            <div class="bg-white rounded-t-2xl p-4 space-y-4">
+                <div class="flex justify-between items-center border-b pb-2">
+                    <h3 class="font-bold text-lg">預算設定</h3>
+                    <button onclick="closeBudgetModal()" class="text-gray-400 text-xl font-bold">&times;</button>
+                </div>
+                <div>
+                    <label class="text-gray-500 text-xs">每月預算上限 (TWD)</label>
+                    <input type="number" id="budget-input-val" class="w-full mt-1 p-2 border rounded-lg bg-gray-50 text-lg font-bold text-blue-600">
+                </div>
+                <button onclick="saveBudget()" class="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-md">儲存設定</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 初始化 Supabase[span_0](start_span)[span_0](end_span)
+        const supabaseUrl = 'https://ttyoomibbuxortbeucjm.supabase.co';
+        const supabaseKey = 'sb_publishable_DRlM9KrC2KFTVUoJI0dH2Q_u2c9PH10';
+        const _supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        const defaultRates = { "TWD": 1.0, "JPY": 0.218, "USD": 32.2, "EUR": 34.8, "KRW": 0.024 };
+        const categoryIcons = {
+            "餐飲": "🍴", "交通": "🚌", "購物": "🛍️", "娛樂": "🎮", 
+            "保險": "🛡️", "居家": "🏠", "醫藥": "💊", "訂閱": "📺", "其他": "📦"
+        };
+
+        let expenses = [];
+        let monthlyBudget = 20000.0;
+        let currentDate = new Date().toISOString().split('T')[0];
+        let currentTagFilter = null;
+        let editingId = null;
+
+        // 統計相關狀態
+        let statTab = 0; // 0: 月, 1: 年
+        let statMode = 0; // 0: 類別, 1: 標籤
+        let statDate = new Date();
+
+        async function init() {
+            document.getElementById('selected-date').value = currentDate;
+            document.getElementById('input-date').value = currentDate;
+            await fetchExpenses();
+        }
+
+        async function fetchExpenses() {
+            const { data, error } = await _supabase.from('expense').select('*');
+            if (!error && data) {
+                expenses = data.map(item => ({
+                    ...item,
+                    tags: typeof item.tags === 'string' ? item.tags.split(',').filter(Boolean) : (item.tags || [])
+                }));
+                render();
+            }
+        }
+
+        function render() {
+            renderBudget();
+            renderRecords();
+            renderStats();
+        }
+
+        function renderBudget() {
+            const [year, month] = currentDate.split('-');
+            const monthTotal = expenses
+                .filter(item => item.date.startsWith(`${year}-${month}`))
+                .reduce((sum, item) => sum + item.amount, 0);
+
+            document.getElementById('budget-text').innerText = `$${Math.round(monthTotal)} / $${Math.round(monthlyBudget)}`;
+            const progress = Math.min(monthTotal / Math.max(monthlyBudget, 1), 1.0);
+            const progressBar = document.getElementById('budget-progress');
+            progressBar.style.width = `${progress * 100}%`;
+            progressBar.className = `h-full transition-all duration-300 ${progress >= 1 ? 'bg-red-500' : progress >= 0.8 ? 'bg-orange-500' : 'bg-blue-500'}`;
+        }
+
+        function renderRecords() {
+            document.getElementById('display-date').innerText = currentDate.replace(/-/g, ' / ');
+            
+            // 標籤過濾器
+            const allTags = [...new Set(expenses.flatMap(i => i.tags))].sort();
+            let tagHtml = `<button onclick="setTagFilter(null)" class="px-2.5 py-1 rounded-full font-bold ${!currentTagFilter ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">全部</button>`;
+            allTags.forEach(tag => {
+                const isSel = currentTagFilter === tag;
+                tagHtml += `<button onclick="setTagFilter('${tag}')" class="px-2.5 py-1 rounded-full font-bold ${isSel ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}">#${tag}</button>`;
+            });
+            document.getElementById('tag-filters').innerHTML = tagHtml;
+
+            // 過濾當天資料
+            const filtered = expenses.filter(item => {
+                const matchDate = item.date.startsWith(currentDate);
+                const matchTag = currentTagFilter ? item.tags.includes(currentTagFilter) : true;
+                return matchDate && matchTag;
+            });
+
+            const dayTotal = filtered.reduce((sum, i) => sum + i.amount, 0);
+            document.getElementById('day-total').innerText = `$${Math.round(dayTotal)} TWD`;
+
+            const listEl = document.getElementById('expense-list');
+            if (filtered.length === 0) {
+                listEl.innerHTML = `<div class="text-center text-gray-400 py-8 text-sm">這一天沒有消費紀錄～</div>`;
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(item => `
+                <div onclick="openEditModal('${item.id}')" class="bg-white p-3 rounded-xl shadow-sm flex items-center justify-between cursor-pointer active:bg-gray-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-lg">
+                            ${categoryIcons[item.category] || '📦'}
+                        </div>
+                        <div>
+                            <div class="font-semibold text-sm">${item.title}</div>
+                            <div class="text-xs text-gray-400 flex gap-1 items-center">
+                                <span>${item.category}</span>
+                                ${item.tags.map(t => `<span class="text-blue-500">#${t}</span>`).join(' ')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-sm">$${Math.round(item.amount)} TWD</div>
+                        ${item.currency !== 'TWD' ? `<div class="text-[10px] text-gray-400">(${item.currency} ${Math.round(item.foreign_amount)})</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderStats() {
+            const y = statDate.getFullYear();
+            const m = String(statDate.getMonth() + 1).padStart(2, '0');
+            document.getElementById('stat-date-title').innerText = statTab === 0 ? `${y} 年 ${m} 月` : `${y} 年`;
+            document.getElementById('stat-total-label').innerText = statTab === 0 ? '本月總支出' : '今年總支出';
+
+            const filtered = expenses.filter(item => {
+                if (statTab === 0) return item.date.startsWith(`${y}-${m}`);
+                return item.date.startsWith(`${y}`);
+            });
+
+            const total = filtered.reduce((sum, i) => sum + i.amount, 0);
+            document.getElementById('stat-total-amount').innerText = `$${Math.round(total)}`;
+
+            let groupData = {};
+            filtered.forEach(item => {
+                if (statMode === 0) {
+                    groupData[item.category] = (groupData[item.category] || 0) + item.amount;
+                } else {
+                    if (item.tags.length === 0) {
+                        groupData['無標籤'] = (groupData['無標籤'] || 0) + item.amount;
+                    } else {
+                        item.tags.forEach(t => {
+                            groupData[`#${t}`] = (groupData[`#${t}`] || 0) + item.amount;
+                        });
+                    }
+                }
+            });
+
+            const sortedKeys = Object.keys(groupData).sort((a, b) => groupData[b] - groupData[a]);
+            const statListEl = document.getElementById('stat-list');
+            
+            if (sortedKeys.length === 0) {
+                statListEl.innerHTML = `<div class="text-center text-gray-400 py-12 text-sm">該時段沒有消費紀錄～</div>`;
+                return;
+            }
+
+            statListEl.innerHTML = sortedKeys.map(key => {
+                const amt = groupData[key];
+                const pct = total > 0 ? (amt / total * 100).toFixed(1) : 0;
+                return `
+                    <div class="bg-white p-3 rounded-xl shadow-sm flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+                            <span class="font-semibold text-sm">${key}</span>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-bold text-sm">$${Math.round(amt)}</div>
+                            <div class="text-xs text-gray-400">${pct}%</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 頁面切換
+        function switchTab(tabIndex) {
+            statTab = tabIndex === 1 ? 0 : statTab;
+            document.getElementById('tab-records').classList.toggle('hidden', tabIndex !== 0);
+            document.getElementById('tab-stats').classList.toggle('hidden', tabIndex !== 1);
+            document.getElementById('nav-btn-0').className = `flex-1 flex flex-col items-center justify-center ${tabIndex === 0 ? 'text-blue-600' : 'text-gray-400'}`;
+            document.getElementById('nav-btn-1').className = `flex-1 flex flex-col items-center justify-center ${tabIndex === 1 ? 'text-blue-600' : 'text-gray-400'}`;
+            render();
+        }
+
+        function switchStatType(type) {
+            statTab = type;
+            document.getElementById('stat-type-0').className = `flex-1 py-1.5 text-sm font-bold rounded-lg ${type === 0 ? 'bg-blue-500 text-white shadow-sm' : 'bg-gray-200 text-gray-700'}`;
+            document.getElementById('stat-type-1').className = `flex-1 py-1.5 text-sm font-bold rounded-lg ${type === 1 ? 'bg-blue-500 text-white shadow-sm' : 'bg-gray-200 text-gray-700'}`;
+            renderStats();
+        }
+
+        function switchStatMode(mode) {
+            statMode = mode;
+            document.getElementById('stat-mode-0').className = `flex-1 py-1.5 text-xs font-bold rounded-lg ${mode === 0 ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700'}`;
+            document.getElementById('stat-mode-1').className = `flex-1 py-1.5 text-xs font-bold rounded-lg ${mode === 1 ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700'}`;
+            renderStats();
+        }
+
+        function changeDate(val) { currentDate = val; render(); }
+        function setTagFilter(tag) { currentTagFilter = tag; renderRecords(); }
+
+        function changeStatDate(val) {
+            if (statTab === 0) {
+                statDate.setMonth(statDate.getMonth() + val);
+            } else {
+                statDate.setFullYear(statDate.getFullYear() + val);
+            }
+            renderStats();
+        }
+
+        // 鍵盤與輸入邏輯
+        let rawAmountStr = "";
+
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modal-title').innerText = "新增一筆消費";
+            document.getElementById('input-title').value = "";
+            document.getElementById('input-currency').value = "TWD";
+            document.getElementById('input-category').value = "餐飲";
+            document.getElementById('input-tags').value = "";
+            document.getElementById('input-date').value = currentDate;
+            document.getElementById('delete-btn').classList.add('hidden');
+            document.getElementById('exchange-rate-box').classList.add('hidden');
+            rawAmountStr = "";
+            updateAmountDisplay();
+            document.getElementById('expense-modal').classList.remove('hidden');
+        }
+
+        function openEditModal(id) {
+            const item = expenses.find(i => i.id === id);
+            if (!item) return;
+            editingId = id;
+            document.getElementById('modal-title').innerText = "修改帳目";
+            document.getElementById('input-title').value = item.title;
+            document.getElementById('input-currency').value = item.currency;
+            document.getElementById('input-category').value = item.category;
+            document.getElementById('input-tags').value = item.tags.join(' ');
+            document.getElementById('input-date').value = item.date;
+            document.getElementById('delete-btn').classList.remove('hidden');
+            
+            const isTWD = item.currency === 'TWD';
+            document.getElementById('exchange-rate-box').classList.toggle('hidden', isTWD);
+            document.getElementById('input-rate').value = item.exchange_rate;
+            rawAmountStr = String(Math.round(item.foreign_amount));
+            updateAmountDisplay();
+            document.getElementById('expense-modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('expense-modal').classList.add('hidden'); }
+
+        function updateCurrency() {
+            const cur = document.getElementById('input-currency').value;
+            const isTWD = cur === 'TWD';
+            document.getElementById('exchange-rate-box').classList.toggle('hidden', isTWD);
+            document.getElementById('input-rate').value = defaultRates[cur] || 1.0;
+        }
+
+        function appendNum(n) {
+            if (rawAmountStr === "0") rawAmountStr = n;
+            else rawAmountStr += n;
+            updateAmountDisplay();
+        }
+        function clearNum() { rawAmountStr = ""; updateAmountDisplay(); }
+        function backspaceNum() { rawAmountStr = rawAmountStr.slice(0, -1); updateAmountDisplay(); }
+        function updateAmountDisplay() {
+            document.getElementById('input-amount-display').innerText = rawAmountStr === "" ? "0" : rawAmountStr;
+        }
+
+        async function saveExpense() {
+            const title = document.getElementById('input-title').value.trim();
+            const rawAmount = parseFloat(rawAmountStr) || 0;
+            const currency = document.getElementById('input-currency').value;
+            const rate = parseFloat(document.getElementById('input-rate').value) || 1.0;
+            const category = document.getElementById('input-category').value;
+            const tags = document.getElementById('input-tags').value.split(' ').filter(Boolean);
+            const date = document.getElementById('input-date').value;
+
+            if (!title || rawAmount <= 0) {
+                alert('請完整填寫品項名稱與金額');
+                return;
+            }
+
+            const itemData = {
+                title,
+                category,
+                amount: rawAmount * rate,
+                date,
+                tags: tags.join(','),
+                currency,
+                foreign_amount: rawAmount,
+                exchange_rate: rate
+            };
+
+            if (editingId) {
+                await _supabase.from('expense').update(itemData).eq('id', editingId);
+            } else {
+                await _supabase.from('expense').insert([itemData]);
+            }
+
+            closeModal();
+            await fetchExpenses();
+        }
+
+        async function deleteCurrentItem() {
+            if (!editingId || !confirm('確定要刪除這筆消費嗎？')) return;
+            await _supabase.from('expense').delete().eq('id', editingId);
+            closeModal();
+            await fetchExpenses();
+        }
+
+        function openBudgetModal() {
+            document.getElementById('budget-input-val').value = monthlyBudget;
+            document.getElementById('budget-modal').classList.remove('hidden');
+        }
+        function closeBudgetModal() { document.getElementById('budget-modal').classList.add('hidden'); }
+        function saveBudget() {
+            const val = parseFloat(document.getElementById('budget-input-val').value);
+            if (!isNaN(val)) monthlyBudget = val;
+            closeBudgetModal();
+            renderBudget();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
